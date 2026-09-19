@@ -74,12 +74,25 @@ php artisan alert:topics        # cần id topic mới (ai đó xoá/tạo lại
 4. **Cache FILE, không cache mặc định** — lúc DB sập thì mọi request cùng lỗi, đúng lúc cần chuông nhất.
    Thêm nữa: **mặc định chỉ bật ở production** (`ALERT_ENABLED`), để tin thử ở máy dev không lẫn vào
    đúng chỗ đang theo dõi prod — bài học trả giá từ kênh cũ.
+5. **Gửi hỏng thì KHÔNG mất tin**: tin được ghi xuống spool trên đĩa (`storage/app/telegram-alerts-spool.jsonl`)
+   và `alert:flush` gửi lại — package tự đăng ký lịch 5 phút một lần ở production, không phải khai thêm.
+   Cửa sổ gộp chỉ được chốt SAU KHI gửi thành công (chốt trước = mạng chập là mất tin im lặng).
+   Xem tồn: `php artisan alert:flush --xem`.
 
 Tin gửi ở dạng **text thuần, không parse_mode**: tin báo lỗi hay chứa `<`, `>`, `_` và tên file có ngoặc —
 Markdown/HTML sẽ làm Telegram trả 400 "can't parse entities" và cảnh báo biến mất im lặng.
 
 Khi chính chuông không gửi được, lỗi được ghi lại qua `error_log` (hoặc `ALERT_FALLBACK_LOG=<path>`),
 kèm token đã che — không để "chuông im mà không ai biết vì sao".
+
+## Ngưỡng chờ (đo thật, đừng hạ xuống)
+
+| Biến | Mặc định | Ghi chú |
+|---|---|---|
+| `ALERT_CONNECT_TIMEOUT` | 5s | Đo từ VPS Eros 19/09/2026: bình thường ~0,3s, **có lúc nghẽn quá 2s** — ngưỡng 2s cũ làm rơi một tin báo thật |
+| `ALERT_TIMEOUT` | 10s | Tổng thời gian; không thử lại trong request (đã có spool lo phần gửi lại) |
+| `ALERT_SPOOL_PATH` | `storage/app/telegram-alerts-spool.jsonl` | Nơi giữ tin gửi hỏng (trần 200 tin, bỏ tin cũ nhất) |
+| `ALERT_AUTO_FLUSH` | `true` | Tự đăng ký lịch `alert:flush` 5 phút/lần ở production |
 
 ## Phân phối (chọn trước khi commit vào repo project)
 

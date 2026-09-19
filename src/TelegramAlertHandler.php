@@ -29,9 +29,14 @@ use Throwable;
  *  - Gộp lỗi trùng (cùng loại + cùng dòng code) trong `dedup_minutes`, đếm số lần lặp để tin sau nói rõ
  *    "đã lặp N lần" — dấu hiệu sự cố lan rộng mà không dội bom tin nhắn.
  *  - Cache FILE chứ không cache mặc định: lúc DB sập thì mọi request cùng lỗi, đúng lúc cần chuông nhất.
+ *  - Gửi hỏng thì tin được ghi xuống SPOOL trên đĩa (`alert:flush` gửi lại, package tự đăng ký lịch 5 phút),
+ *    và cửa sổ gộp KHÔNG bị chốt — mạng chập không được biến thành mất tin im lặng.
  */
 final class TelegramAlertHandler extends AbstractProcessingHandler
 {
+    /** Khoá tạm giữ trong lúc gửi (giây) — chống nhiều worker cùng bắn một tin, không phải cửa sổ gộp. */
+    private const KHOA_TAM_GIAY = 60;
+
     private bool $dangGui = false;
 
     private ?TelegramClient $client = null;
@@ -87,16 +92,42 @@ final class TelegramAlertHandler extends AbstractProcessingHandler
 
         $this->dangGui = true;
 
+        $store = Cache::store($this->store());
+        $khoa = 'alert:gui:'.$this->vanTay($record);
+
         try {
-            if (! $this->lanDauTrongKy($record)) {
+            if ($this->phut() > 0 && $store->has($khoa)) {
                 $this->demThem($record);
 
                 return;
             }
 
+            // Khoá tạm trong lúc gửi: nhiều worker cùng lỗi một lúc thì chỉ một tin đi ra. Cửa sổ gộp thật
+            // (dedup_minutes) CHỈ được chốt SAU KHI gửi thành công.
+            if ($this->phut() > 0) {
+                $store->put($khoa, true, self::KHOA_TAM_GIAY);
+            }
+
             $this->gui($this->noiDung($record));
+
+            if ($this->phut() > 0) {
+                $store->put($khoa, true, $this->phut() * 60);
+            }
+
             $this->datLaiDem($record);
         } catch (Throwable $e) {
+            // Gửi hỏng (mạng, token, Telegram 5xx): MỞ LẠI cửa sổ gộp để lần lỗi sau còn được báo, và ghi
+            // tin xuống spool để `alert:flush` gửi lại. Chốt cửa sổ trước khi gửi là mất tin im lặng.
+            if ($this->phut() > 0) {
+                $store->forget($khoa);
+            }
+
+            app(TelegramSpool::class)->ghi($this->noiDung($record), [
+                'kenh' => $this->project(),
+                'moi_truong' => config('app.env'),
+                'van_tay' => $this->vanTay($record),
+            ], $e->getMessage());
+
             TelegramClient::ghiVet($this->cheToken($e->getMessage()));
         } finally {
             $this->dangGui = false;
@@ -117,21 +148,6 @@ final class TelegramAlertHandler extends AbstractProcessingHandler
         return false;
     }
 
-    /** true = cửa sổ gộp đã hết, được phép gửi tin mới. */
-    private function lanDauTrongKy(LogRecord $record): bool
-    {
-        // dedup_minutes = 0 nghĩa là TẮT gộp: cache TTL 0 lại có nghĩa "không hết hạn", nên phải chặn ở đây
-        // kẻo bật 0 lại thành gộp vĩnh viễn.
-        if ($this->phut() <= 0) {
-            return true;
-        }
-
-        return Cache::store($this->store())->add(
-            'alert:gui:'.$this->vanTay($record),
-            true,
-            $this->phut() * 60
-        );
-    }
 
     private function demThem(LogRecord $record): void
     {

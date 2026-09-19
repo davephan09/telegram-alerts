@@ -4,6 +4,8 @@ namespace Dphan\TelegramAlerts;
 
 use Dphan\TelegramAlerts\Commands\AlertTestCommand;
 use Dphan\TelegramAlerts\Commands\AlertTopicsCommand;
+use Dphan\TelegramAlerts\Commands\AlertFlushCommand;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -21,6 +23,8 @@ class TelegramAlertsServiceProvider extends ServiceProvider
             config('telegram-alerts.chat_id'),
             config('telegram-alerts.topic_id'),
         ));
+
+        $this->app->singleton(TelegramSpool::class, fn () => new TelegramSpool(config('telegram-alerts.spool_path')));
     }
 
     public function boot(): void
@@ -31,6 +35,28 @@ class TelegramAlertsServiceProvider extends ServiceProvider
             ], 'telegram-alerts-config');
 
             $this->commands([AlertTestCommand::class, AlertTopicsCommand::class]);
+            $this->commands([AlertFlushCommand::class]);
         }
+
+        // Gửi lại tin hỏng: package tự lo lịch để mỗi project không phải nhớ khai thêm.
+        $this->app->booted(function () {
+            if (! $this->app->runningInConsole()) {
+                return;
+            }
+
+            if (config('telegram-alerts.auto_flush') === false || config('telegram-alerts.auto_flush') === 'false') {
+                return;
+            }
+
+            if (config('app.env') !== 'production') {
+                return;
+            }
+
+            $this->app->make(Schedule::class)
+                ->command('alert:flush')
+                ->everyFiveMinutes()
+                ->withoutOverlapping()
+                ->runInBackground();
+        });
     }
 }

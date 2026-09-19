@@ -51,4 +51,15 @@ return [
 
     // Đích nhận khi kênh không gửi được (để còn dấu vết mà dò). null = chỉ ghi error_log của PHP.
     'fallback_log' => env('ALERT_FALLBACK_LOG'),
+
+    // Ngưỡng chờ gọi Telegram (giây). Đo từ VPS VN: bình thường ~0,3s kết nối nhưng có lúc nghẽn; để chặt
+    // quá thì tin báo bị bỏ im lặng đúng lúc cần nhất.
+    'connect_timeout' => (int) env('ALERT_CONNECT_TIMEOUT', 5),
+    'timeout' => (int) env('ALERT_TIMEOUT', 10),
+
+    // Spool tin gửi hỏng (lệnh `alert:flush` gửi lại). Bỏ trống = storage/app/telegram-alerts-spool.jsonl.
+    'spool_path' => env('ALERT_SPOOL_PATH'),
+
+    // Tự đăng ký lịch `alert:flush` mỗi 5 phút (chỉ ở production). Tắt nếu project đã có cách khác.
+    'auto_flush' => env('ALERT_AUTO_FLUSH', true),
 ];

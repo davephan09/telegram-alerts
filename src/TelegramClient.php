@@ -56,8 +56,8 @@ final class TelegramClient
         }
 
         try {
-            $res = Http::connectTimeout(2)
-                ->timeout(5)
+            $res = Http::connectTimeout($this->connectTimeout())
+                ->timeout($this->timeout())
                 ->asForm()
                 ->post($this->duongDan($this->token, 'sendMessage'), $payload);
         } catch (Throwable $e) {
@@ -74,6 +74,29 @@ final class TelegramClient
     public function duongDan(string $token, string $method): string
     {
         return "https://api.telegram.org/bot{$token}/{$method}";
+    }
+
+    /**
+     * Ngưỡng chờ kết nối. Đo thật từ VPS Eros (19/09/2026): bình thường ~0,3s, nhưng có lúc nghẽn quá 2s —
+     * ngưỡng 2s cũ làm tin báo bị bỏ trong im lặng, mà đó lại là đúng lúc cần chuông nhất.
+     */
+    private function connectTimeout(): int
+    {
+        return (int) $this->layCauHinh('connect_timeout', 5);
+    }
+
+    private function timeout(): int
+    {
+        return (int) $this->layCauHinh('timeout', 10);
+    }
+
+    private function layCauHinh(string $khoa, int $macDinh): int
+    {
+        if (! function_exists('config')) {
+            return $macDinh;
+        }
+
+        return (int) (config("telegram-alerts.{$khoa}") ?: $macDinh);
     }
 
     /**
