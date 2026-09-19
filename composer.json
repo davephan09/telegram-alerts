@@ -1,0 +1,30 @@
+{
+    "name": "dphan/telegram-alerts",
+    "description": "Kenh bao loi Telegram dung chung cho nhieu project Laravel: 1 bot, 1 nhom, moi project 1 topic.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["telegram", "monolog", "alerts", "logging", "laravel"],
+    "require": {
+        "php": "^8.2",
+        "illuminate/support": "^11.0|^12.0",
+        "illuminate/http": "^11.0|^12.0",
+        "monolog/monolog": "^3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Dphan\\TelegramAlerts\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Dphan\\TelegramAlerts\\TelegramAlertsServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
