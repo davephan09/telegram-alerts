@@ -47,11 +47,9 @@ class AlertTestCommand extends Command
 
         $this->info('Đã gửi. Kiểm tin trong Telegram (đúng topic của project chứ?).');
 
-        $stack = (array) config('logging.channels.stack.channels', []);
-
-        if (config('logging.default') !== 'stack' || ! in_array('telegram', $stack, true)) {
+        if (! $this->kenhTelegramDangHoatDong()) {
             $this->warn('Lưu ý: kênh telegram CHƯA nằm trong log mặc định, nên lỗi thật sẽ KHÔNG được báo. '
-                .'Đặt LOG_CHANNEL=stack và LOG_STACK=daily,telegram.');
+                .'Đặt LOG_CHANNEL=stack + LOG_STACK=daily,telegram (hoặc trỏ kênh mặc định vào một stack có telegram).');
         }
 
         if ($handler->bat() === false) {
@@ -60,5 +58,43 @@ class AlertTestCommand extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Kênh mặc định có thật sự dẫn tới `telegram` không. Phải đi theo chuỗi stack (kênh mặc định có thể là
+     * `daily_and_telegram` → ['daily','telegram'], không nhất thiết tên là `stack`): bản đầu chỉ soi kênh
+     * `stack` nên báo oan cho project dùng tên khác, mà cảnh báo oan thì người ta bắt đầu bỏ qua cảnh báo thật.
+     */
+    private function kenhTelegramDangHoatDong(): bool
+    {
+        return $this->danToiTelegram((string) config('logging.default'), []);
+    }
+
+    /** @param array<string, bool> $daXet */
+    private function danToiTelegram(string $kenh, array $daXet, int $sau = 0): bool
+    {
+        if ($kenh === '' || $sau > 3 || isset($daXet[$kenh])) {
+            return false;
+        }
+
+        $daXet[$kenh] = true;
+
+        if ($kenh === 'telegram') {
+            return true;
+        }
+
+        $cauHinh = (array) config("logging.channels.{$kenh}", []);
+
+        if (($cauHinh['driver'] ?? null) !== 'stack') {
+            return false;
+        }
+
+        foreach ((array) ($cauHinh['channels'] ?? []) as $con) {
+            if ($this->danToiTelegram((string) $con, $daXet, $sau + 1)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
